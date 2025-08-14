@@ -37,7 +37,7 @@
 (function() {
     'use strict';
 
-    const DEBUG = true; // Enable for troubleshooting
+    const DEBUG = false; // Enable for troubleshooting
     let lastLogMessage = '';
 
     const CONFIG = {
@@ -227,7 +227,7 @@
 
         const checkInterval = setInterval(() => {
             checkAndAddButton();
-        }, 5000);
+        }, 3500); // lowered for quicker response
 
         setTimeout(() => {
             clearInterval(checkInterval);
