@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BambooHR Employee Photo Downloader
-// @namespace    https://github.com/OrbitingAncient/ats-userscripts/
-// @version      25.8.13
+// @namespace    https://github.com/orbitingancient/ats-userscripts
+// @version      25.8.14
 // @description  Adds a button to download the full-resolution employee photo from BambooHR
 // @match        https://*.bamboohr.com/employees/*
 // @grant        none
@@ -37,13 +37,13 @@
 (function() {
     'use strict';
 
-    const DEBUG = false;
+    const DEBUG = true; // Enable for troubleshooting
     let lastLogMessage = '';
 
     const CONFIG = {
-        nameSelector: '.PageHeader__title, [class*="PageHeader__title"], [class*="header"]',
-        cropperSelector: '[class*="cropperWrapper"], [class*="cropper"], [class*="modal"]',
-        imageSelector: '.cropper-canvas img, [class*="cropper"] img, img',
+        nameSelector: '[data-testid="employee-name"], .employee-header-title, .PageHeader__title',
+        cropperSelector: '[data-testid="photo-modal"], .photo-modal, [class*="cropperWrapper"]',
+        imageSelector: '.photo-modal img, [data-testid="employee-photo"], .cropper-canvas img',
         buttonId: 'downloadPhotoButton'
     };
 
@@ -70,7 +70,11 @@
 
     function fetchWithTimeout(url, options = {}, timeout = 10000) {
         return Promise.race([
-            fetch(url, options),
+            fetch(url, { ...options, mode: 'cors', credentials: 'include' })
+                .catch(err => {
+                    log('Fetch error:', err.message);
+                    throw err;
+                }),
             new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Request timed out')), timeout)
             )
@@ -140,8 +144,8 @@
                 if (imageSrc.startsWith('data:image/')) {
                     blob = await fetchWithTimeout(imageSrc).then(res => res.blob());
                 } else {
-                    blob = await fetchWithTimeout(imageSrc, { mode: 'cors' }).then(res => {
-                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    blob = await fetchWithTimeout(imageSrc).then(res => {
+                        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
                         return res.blob();
                     });
                 }
@@ -156,8 +160,8 @@
                 window.URL.revokeObjectURL(url);
                 log('Photo download initiated for:', employeeName);
             } catch (err) {
-                log('Error downloading image:', err);
-                alert('Failed to download image. Check console for details.');
+                log('Error downloading image:', err.message);
+                alert(`Failed to download image: ${err.message}. Check console for details.`);
             }
         });
 
@@ -176,7 +180,7 @@
     function checkAndAddButton() {
         const cropperWrapper = document.querySelector(CONFIG.cropperSelector);
         if (!cropperWrapper || cropperWrapper.offsetParent === null) {
-            logOnce('Cropper popup not visible');
+            logOnce('Cropper popup not visible or not found on this page');
             removeDownloadButton();
             return;
         }
@@ -193,24 +197,20 @@
 
     function observePage() {
         const debouncedCheck = debounce(checkAndAddButton, 500);
-
-        const observer = new MutationObserver(() => {
-            debouncedCheck();
-        });
-
-        observer.observe(document.body, {
+        const targetNode = document.querySelector('#employeePhoto') || document.body;
+        const observer = new MutationObserver(debouncedCheck);
+        observer.observe(targetNode, {
             childList: true,
             subtree: true,
             attributes: true
         });
-
-        log('MutationObserver started');
+        log('MutationObserver started on:', targetNode);
         checkAndAddButton();
     }
 
     function init() {
-        log('Script initialized');
-        log('BambooHR Photo Downloader v25.8.13.1 loaded');
+        log('Script initialized on URL:', window.location.href);
+        log('BambooHR Photo Downloader v25.8.14 loaded');
 
         observePage();
 
@@ -218,15 +218,16 @@
         if (photoContainer) {
             photoContainer.addEventListener('click', () => {
                 log('Photo container clicked, checking for cropper popup');
-                checkAndAddButton();
+                setTimeout(checkAndAddButton, 500); // Delay to ensure popup loads
             });
         } else {
-            logOnce('Photo container not found');
+            logOnce('Photo container not found, retrying...');
+            setTimeout(checkAndAddButton, 1000); // Retry after 1s
         }
 
         const checkInterval = setInterval(() => {
             checkAndAddButton();
-        }, 4000);
+        }, 5000);
 
         setTimeout(() => {
             clearInterval(checkInterval);
@@ -235,8 +236,8 @@
     }
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        init();
+        setTimeout(init, 1000); // Delay init to handle SPAs
     } else {
-        document.addEventListener('DOMContentLoaded', init);
+        document.addEventListener('DOMContentLoaded', () => setTimeout(init, 1000));
     }
 })();
