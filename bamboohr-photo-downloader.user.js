@@ -10,7 +10,6 @@
 
 // © 2025 Addiction Treatment Services
 // Released under the MIT License
-
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the “Software”), to deal
 // in the Software without restriction, including without limitation the rights
@@ -38,10 +37,12 @@
     'use strict';
 
     const DEBUG = false; // Enable for troubleshooting
+    const INCLUDE_JOB_TITLE = true; // Set to false to exclude job title from file name
     let lastLogMessage = '';
 
     const CONFIG = {
-        nameSelector: '[data-testid="employee-name"], .employee-header-title, .PageHeader__title',
+        nameSelector: '.PageHeader__title',
+        jobTitleSelector: '.PageHeader__subTitle--large',
         cropperSelector: '[data-testid="photo-modal"], .photo-modal, [class*="cropperWrapper"]',
         imageSelector: '.photo-modal img, [data-testid="employee-photo"], .cropper-canvas img',
         buttonId: 'downloadPhotoButton'
@@ -83,19 +84,37 @@
 
     function getEmployeeName() {
         const nameElement = document.querySelector(CONFIG.nameSelector);
+        let cleanName = 'unknown';
+        let jobTitle = '';
+
         if (nameElement) {
             let rawText = nameElement.textContent.trim();
-            rawText = rawText.replace(/[^a-zA-Z\s]/g, '');
-            rawText = rawText.replace(/\s+/g, ' ').trim();
-            const nameParts = rawText.split(' ').slice(0, 3);
-            const cleanName = nameParts.join('_');
+            rawText = rawText.replace(/[^a-zA-Z\s]/g, ''); // Remove special characters
+            rawText = rawText.replace(/\s+/g, ' ').trim(); // Normalize spaces
+            cleanName = rawText.replace(/\s/g, '_'); // Replace spaces with underscores
             log('Clean employee name extracted:', cleanName);
-            return cleanName;
+        } else {
+            log('Employee name not found in .PageHeader__title, falling back to employee ID');
+            const urlParams = new URLSearchParams(window.location.search);
+            cleanName = urlParams.get('id') || 'unknown';
         }
 
-        log('Employee name not found, falling back to employee ID');
-        const urlParams = new URLSearchParams(window.location.search);
-        return urlParams.get('id') || 'unknown';
+        if (INCLUDE_JOB_TITLE) {
+            const jobTitleElement = document.querySelector(CONFIG.jobTitleSelector);
+            if (jobTitleElement) {
+                let rawJobTitle = jobTitleElement.textContent.trim();
+                rawJobTitle = rawJobTitle.replace(/[^a-zA-Z\s]/g, ''); // Remove special characters
+                rawJobTitle = rawJobTitle.replace(/\s+/g, ' ').trim(); // Normalize spaces
+                jobTitle = rawJobTitle.replace(/\s/g, '_'); // Replace spaces with underscores
+                log('Job title extracted:', jobTitle);
+            } else {
+                log('Job title not found in .PageHeader__subTitle--large');
+            }
+        }
+
+        const fileName = jobTitle && INCLUDE_JOB_TITLE ? `${cleanName}_${jobTitle}` : cleanName;
+        log('Generated file name:', fileName);
+        return fileName;
     }
 
     function addDownloadButton(imageElement, container) {
@@ -138,7 +157,7 @@
         });
 
         downloadButton.addEventListener('click', async () => {
-            const employeeName = getEmployeeName();
+            const fileName = getEmployeeName();
             try {
                 let blob;
                 if (imageSrc.startsWith('data:image/')) {
@@ -153,12 +172,12 @@
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = `${employeeName}.jpg`;
+                link.download = `${fileName}.jpg`;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
                 window.URL.revokeObjectURL(url);
-                log('Photo download initiated for:', employeeName);
+                log('Photo download initiated for:', fileName);
             } catch (err) {
                 log('Error downloading image:', err.message);
                 alert(`Failed to download image: ${err.message}. Check console for details.`);
@@ -227,7 +246,7 @@
 
         const checkInterval = setInterval(() => {
             checkAndAddButton();
-        }, 3500); // lowered for quicker response
+        }, 5000);
 
         setTimeout(() => {
             clearInterval(checkInterval);
